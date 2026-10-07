@@ -37,17 +37,17 @@ onMounted(() => { if (props.initialSection === 'sound') soundSection.value?.scro
   <BottomSheet title="设置" @close="emit('close')">
     <h3 class="section-title">常用设置</h3>
     <div class="settings-card general-card">
-      <div class="setting-row theme-row"><span>外观主题</span><div class="theme-options"><button v-for="t in THEMES" :key="t.id" :aria-pressed="state.theme === t.id" @click="setTheme(t.id)"><span class="theme-swatch" :class="[t.id, { selected: state.theme === t.id }]"><i v-if="state.theme === t.id" class="led" /></span><small>{{ t.label }}</small></button></div></div>
-      <div class="setting-row language-row"><div><span>电台语言</span><small>优先收听的音源语言</small></div><div class="seg"><button v-for="l in LANGS" :key="l.id" :class="{ on: state.lang === l.id }" :aria-pressed="state.lang === l.id" @click="setLang(l.id)">{{ l.label }}</button></div></div>
+      <div class="setting-row theme-row"><span>外观主题</span><div class="theme-options" role="group" aria-label="外观主题"><button v-for="t in THEMES" :key="t.id" :aria-pressed="state.theme === t.id" @click="setTheme(t.id)"><span class="theme-swatch" :class="[t.id, { selected: state.theme === t.id }]"><i v-if="state.theme === t.id" class="led" /></span><small>{{ t.label }}</small></button></div></div>
+      <div class="setting-row language-row"><div><span>电台语言</span><small>优先收听的音源语言</small></div><div class="seg" role="group" aria-label="电台语言"><button v-for="l in LANGS" :key="l.id" :class="{ on: state.lang === l.id }" :aria-pressed="state.lang === l.id" @click="setLang(l.id)">{{ l.label }}</button></div></div>
     </div>
     <section ref="soundSection" class="sound-section">
       <div class="section-heading"><h3 class="section-title">音效调节</h3><button class="reset-button" :disabled="!changed" @click="resetFx()">↻ 重置</button></div>
       <div class="settings-card sound-card">
-        <div class="seg mode-seg"><button v-for="m in MODES" :key="m.id" :class="{ on: state.mode === m.id }" :aria-pressed="state.mode === m.id" @click="setMode(m.id)">{{ m.label }}</button></div>
+        <div class="seg mode-seg" role="group" aria-label="音质模式"><button v-for="m in MODES" :key="m.id" :class="{ on: state.mode === m.id }" :aria-pressed="state.mode === m.id" @click="setMode(m.id)">{{ m.label }}</button></div>
         <p class="hint mode-hint">{{ description }}</p>
         <div class="sound-sliders"><div v-for="f in sliders" :key="f.key" class="sound-slider"><label :for="`sound-${f.key}`" :title="f.hint">{{ f.label }}</label><input :id="`sound-${f.key}`" type="range" min="0" max="100" step="1" :value="Math.round(state.fx[f.key] * 100)" :disabled="state.mode === 'clean'" :aria-description="f.hint" :style="{ '--fill': `${state.fx[f.key] * 100}%` }" @input="setFx(f.key, Number(($event.target as HTMLInputElement).value) / 100)"/><output :for="`sound-${f.key}`">{{ Math.round(state.fx[f.key] * 100) }}%</output></div></div>
       </div>
-      <details class="advanced-fx settings-card"><summary>更多音效<span class="chevron">›</span></summary><FxPanel /></details>
+      <details class="advanced-fx settings-card"><summary>更多音效<span class="chevron" aria-hidden="true">›</span></summary><FxPanel /></details>
     </section>
     <h3 class="section-title">本地音乐</h3>
     <button class="settings-card local-button" @click="files?.click()"><span aria-hidden="true">♫</span>选择本地音频</button>
@@ -55,8 +55,8 @@ onMounted(() => { if (props.initialSection === 'sound') soundSection.value?.scro
     <p class="hint local-hint">用自己的音乐试听收音机音色</p>
     <h3 class="section-title">高级设置</h3>
     <div class="settings-card advanced-card">
-      <details><summary>市电频率<span class="summary-value">{{ state.mains }} Hz</span><span class="chevron">›</span></summary><div class="detail-content"><p class="hint">交流哼声的基频</p><div class="seg"><button v-for="hz in ([50, 60] as const)" :key="hz" :class="{ on: state.mains === hz }" :aria-pressed="state.mains === hz" @click="setMains(hz)">{{ hz }} Hz</button></div></div></details>
-      <details class="diag" @toggle="openDiag"><summary>诊断信息<span class="chevron">›</span></summary><div class="detail-content"><p class="hint">播放遇到问题时，可复制以下信息反馈。</p><pre>{{ diag }}</pre><button class="wide" @click="copyDiag">{{ copied ? '已复制' : '刷新并复制' }}</button></div></details>
+      <details><summary>市电频率<span class="summary-value">{{ state.mains }} Hz</span><span class="chevron" aria-hidden="true">›</span></summary><div class="detail-content"><p class="hint">交流哼声的基频</p><div class="seg" role="group" aria-label="市电频率"><button v-for="hz in ([50, 60] as const)" :key="hz" :class="{ on: state.mains === hz }" :aria-pressed="state.mains === hz" @click="setMains(hz)">{{ hz }} Hz</button></div></div></details>
+      <details class="diag" @toggle="openDiag"><summary>诊断信息<span class="chevron" aria-hidden="true">›</span></summary><div class="detail-content"><p class="hint">播放遇到问题时，可复制以下信息反馈。</p><pre>{{ diag }}</pre><button class="wide" aria-live="polite" @click="copyDiag">{{ copied ? '已复制' : '刷新并复制' }}</button></div></details>
     </div>
     <p class="credit">音源：<a href="https://somafm.com" target="_blank" rel="noopener">SomaFM</a> · <a href="https://www.radio-browser.info" target="_blank" rel="noopener">Radio Browser</a></p>
   </BottomSheet>

@@ -307,8 +307,8 @@ svg { flex-shrink: 0; }
 .elapsed time { max-width: 100%; letter-spacing: -.04em; }
 .sleep-countdown { grid-column: 1 / -1; text-align: center; color: var(--text-6); font: 11px/1.4 var(--sans); }
 /* Shared bottom sheets */
-.sheet-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.65); backdrop-filter: blur(4px); }
-.sheet { display: flex; flex-direction: column; width: 100%; max-width: 460px; max-height: 90dvh; overflow: hidden; padding: 0 22px; border: 1px solid var(--line); border-bottom: 0; border-radius: 28px 28px 0 0; background: linear-gradient(145deg, var(--surface), var(--surface-low)); box-shadow: 0 -10px 40px #0003; animation: rise .2s ease-out; }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; justify-content: center; background: rgba(var(--sh), .65); backdrop-filter: blur(4px); animation: fade .2s ease-out; }
+.sheet { display: flex; flex-direction: column; width: 100%; max-width: 460px; max-height: 90dvh; overflow: hidden; padding: 0 22px; border: 1px solid var(--line); border-bottom: 0; border-radius: 28px 28px 0 0; background: linear-gradient(145deg, var(--surface), var(--surface-low)); box-shadow: 0 -10px 40px rgba(var(--sh), .3); animation: rise .2s ease-out; }
 .sheet-head { flex: none; touch-action: none; user-select: none; -webkit-user-select: none; }
 .sheet-grip { display: grid; place-items: center; height: 30px; }
 .sheet-handle { width: 42px; height: 4px; border-radius: 4px; background: var(--text-8); opacity: .5; }
@@ -326,7 +326,7 @@ svg { flex-shrink: 0; }
 .theme-options { display: flex; gap: 20px; }
 .theme-options button { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 52px; }
 .theme-options small { font-size: 12px; }
-.theme-swatch { width: 50px; height: 38px; border: 1px solid #ffffff30; border-radius: 9px; display: block; position: relative; }
+.theme-swatch { width: 50px; height: 38px; border: 1px solid var(--line); border-radius: 9px; display: block; position: relative; }
 .theme-swatch.dark { background: linear-gradient(145deg, #30302e, #141414); }
 .theme-swatch.retro { background: linear-gradient(145deg, #f6e7ae, #dcc271); }
 .theme-swatch.selected { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -343,10 +343,10 @@ svg { flex-shrink: 0; }
 .mode-seg button { flex: 1; }
 .hint { font-size: 12px; line-height: 1.65; color: var(--text-6); }
 .mode-hint { text-align: center; margin: 10px 0; }
-.sound-slider { display: flex; align-items: center; gap: 12px; min-height: 42px; font-size: 14px; }
+.sound-slider { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: 14px; }
 .sound-slider label { flex: none; }
 .sound-slider output { width: 36px; text-align: right; font: 12px var(--mono); }
-.sound-slider input { flex: 1; min-width: 0; height: 32px; margin: 0; appearance: none; background: transparent; cursor: pointer; }
+.sound-slider input { flex: 1; min-width: 0; height: 44px; margin: 0; appearance: none; background: transparent; cursor: pointer; }
 .sound-slider input::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: linear-gradient(to right, var(--accent) var(--fill), var(--line) var(--fill)); }
 .sound-slider input::-moz-range-track { height: 4px; border-radius: 4px; background: var(--line); }
 .sound-slider input::-moz-range-progress { height: 4px; background: var(--accent); }
@@ -375,6 +375,7 @@ details[open] > summary .chevron { transform: rotate(90deg); }
 .sleep-options .selected { border-color: var(--accent); background: rgba(var(--accent-rgb), .08); }
 @keyframes pulse { 50% { opacity: .4; } }
 @keyframes rise { from { transform: translateY(20px); opacity: 0; } }
+@keyframes fade { from { opacity: 0; } }
 @media (max-width: 360px) { .radio { padding-left: 16px; padding-right: 16px; } .sheet { padding-left: 16px; padding-right: 16px; } .presets { gap: 7px; } .shortcuts { gap: 7px; } .shortcuts button { gap: 5px; padding: 8px 5px; font-size: 12px; } .language-row { flex-wrap: wrap; } .theme-options { gap: 14px; } }
 @media (min-height: 850px) { .radio { padding-top: max(env(safe-area-inset-top), 28px); padding-bottom: max(env(safe-area-inset-bottom), 28px); } .readout { padding-top: 28px; } .presets .preset { min-height: 50px; } .playback { padding-top: 30px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
@@ -399,3 +400,30 @@ body { line-height: 1.5; }
 
 .update-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-low); font-size: 13px; }
 .update-notice button { min-height: 44px; padding: 8px 10px; color: var(--accent); }
+
+/* Polish: pointer hover, press and state feedback. Colours come from the theme tokens. */
+.gear, .shortcuts button, .seg button, .sleep-options button, .sheet-close, .playback-control, .theme-swatch { transition: background-color .14s ease-out, border-color .14s ease-out, box-shadow .14s ease-out, color .14s ease-out, transform .14s ease-out; }
+.chevron { transition: transform .16s ease-out; }
+.sheet:focus { outline: none; }
+.theme-options button:focus-visible, .seg button:focus-visible { outline-offset: 2px; }
+.sound-slider input:focus-visible { outline: 0; }
+.sound-slider input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 3px; }
+.sound-slider input:focus-visible::-moz-range-thumb { outline: 2px solid var(--accent); outline-offset: 3px; }
+.sound-slider input:not(:disabled):active::-webkit-slider-thumb { background: var(--accent); }
+.sound-slider input:not(:disabled):active::-moz-range-thumb { background: var(--accent); }
+.sleep-options button:active:not(:disabled), .shortcuts button:active:not(:disabled) { background: var(--well); }
+.sleep-options .selected { color: var(--text-hi); }
+.update-notice button:active { opacity: .7; }
+/* While playing the play key sits in a lit ring, like a lamp behind a bakelite button. */
+.radio.on .play-button { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .22), 0 6px 16px rgba(var(--sh), .3), inset 0 1px 1px rgba(var(--hi), .16), inset 0 -2px 4px rgba(var(--sh), .2); }
+.swap:disabled { box-shadow: none; }
+@media (hover: hover) {
+  .gear:hover { color: var(--accent); }
+  .preset:hover:not(.active):not(:disabled) { border-color: var(--text-6); }
+  .shortcuts button:hover, .seg button:not(.on):hover, .sleep-options button:not(.selected):hover { background: var(--surface-high); }
+  .sheet-close:hover { border-color: var(--accent); color: var(--accent); }
+  button.playback-control:hover:not(:disabled) { border-color: var(--accent); }
+  .theme-options button:hover .theme-swatch:not(.selected) { border-color: var(--text-6); }
+  .reset-button:hover:not(:disabled), .update-notice button:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .wide:hover { background: var(--surface-raise); }
+}

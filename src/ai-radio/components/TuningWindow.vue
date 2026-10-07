@@ -103,6 +103,7 @@ function wheel(e: WheelEvent) {
 .tuning-frame { padding: 12px; border: 1px solid var(--line); border-radius: 22px; background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(var(--hi), .025) 2px 3px), linear-gradient(145deg, var(--surface-top), var(--well-deep)); box-shadow: 0 8px 18px rgba(var(--sh), .35), inset 0 1px 1px rgba(var(--hi), .18), inset 0 -1px 1px rgba(var(--sh), .6); }
 .tuning-glass { position: relative; overflow: hidden; border: 1px solid #a46c39; border-radius: 13px; background: linear-gradient(175deg, #383632, #141414 50%, #272018); box-shadow: inset 0 3px 8px #000c, inset 0 -1px 5px #ff8b3433, 0 0 0 3px #0008; cursor: ew-resize; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
 .tuning-glass::after { content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; background: linear-gradient(170deg, #ffffff18, transparent 35%), linear-gradient(115deg, transparent 45%, #ffffff04 45% 65%, transparent 65%); box-shadow: inset 0 1px 1px #ffffff40; }
+.tuning-glass.dragging { cursor: grabbing; }
 .tuning-glass svg { display: block; width: 100%; height: auto; }
 .window-band { fill: #ed9b68; font: 12px var(--mono); }
 .window-baseline { stroke: #b69166; stroke-width: .7; }
