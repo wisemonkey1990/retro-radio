@@ -15,7 +15,9 @@
     "capacitor:sync": "npx cap sync",
     "apk:debug": "cd android && ./gradlew assembleDebug",
     "apk:release": "cd android && ./gradlew assembleRelease",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "icons:generate": "node scripts/generate-icons.mjs",
+    "test": "node --test --test-isolation=none tests/*.test.mjs"
   },
   "dependencies": {
     "vite-plugin-pwa": "^1.0.0",
