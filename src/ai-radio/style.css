@@ -308,12 +308,15 @@ svg { flex-shrink: 0; }
 .sleep-countdown { grid-column: 1 / -1; text-align: center; color: var(--text-6); font: 11px/1.4 var(--sans); }
 /* Shared bottom sheets */
 .sheet-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.65); backdrop-filter: blur(4px); }
-.sheet { width: 100%; max-width: 460px; max-height: 90dvh; overflow-y: auto; overscroll-behavior: contain; padding: 10px 22px max(env(safe-area-inset-bottom), 24px); border: 1px solid var(--line); border-bottom: 0; border-radius: 28px 28px 0 0; background: linear-gradient(145deg, var(--surface), var(--surface-low)); box-shadow: 0 -10px 40px #0003; animation: rise .2s ease-out; }
-.sheet-handle { width: 42px; height: 4px; border-radius: 4px; background: var(--text-8); margin: 0 auto 12px; opacity: .5; }
+.sheet { display: flex; flex-direction: column; width: 100%; max-width: 460px; max-height: 90dvh; overflow: hidden; padding: 0 22px; border: 1px solid var(--line); border-bottom: 0; border-radius: 28px 28px 0 0; background: linear-gradient(145deg, var(--surface), var(--surface-low)); box-shadow: 0 -10px 40px #0003; animation: rise .2s ease-out; }
+.sheet-head { flex: none; touch-action: none; user-select: none; -webkit-user-select: none; }
+.sheet-grip { display: grid; place-items: center; height: 30px; }
+.sheet-handle { width: 42px; height: 4px; border-radius: 4px; background: var(--text-8); opacity: .5; }
+.sheet-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: max(env(safe-area-inset-bottom), 24px); }
 .sheet { transition: transform .2s ease-out; }
 .sheet.is-dragging { transition: none; }
 .sheet.has-dragged { animation: none; }
-.sheet > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.sheet-head > header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 16px; }
 .sheet h2 { font-family: 'Songti SC', STSong, serif; font-size: 30px; color: var(--text-1); margin: 0; letter-spacing: .1em; }
 .sheet-close { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--text-8); border-radius: 50%; font-size: 28px; line-height: 1; }
 .settings-card { border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(145deg, var(--surface-high), var(--surface-low)); }
