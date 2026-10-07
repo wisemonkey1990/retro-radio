@@ -4,6 +4,7 @@ import SettingsSheet from './components/SettingsSheet.vue'
 import BottomSheet from './components/BottomSheet.vue'
 import TuningKnob from './components/TuningKnob.vue'
 import { MODES, PRESETS, SLEEP_STEPS, dialText } from './data'
+import { appUpdate } from './pwaUpdates'
 import { nextStation, setFrequency, setSleep, state, togglePlay, tune } from './engine'
 const settings = ref(false)
 const sleep = ref(false)
@@ -36,6 +37,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
       <div class="brand"><h1>复古电台</h1><span>RETRO RADIO</span></div>
       <button class="gear" aria-label="设置" @click="openSettings('general')"><svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m9 3-1 3-3 1-2 3 2 2-1 3 3 3 3-1 2 2 3-2 3 1 3-3-1-3 2-2-2-3-3-1-1-3Z"/><circle cx="12" cy="12" r="3.5"/></svg></button>
     </header>
+    <div v-if="appUpdate.available" class="update-notice" role="status"><span>新版本已就绪</span><button @click="appUpdate.apply()">暂停并更新</button></div>
     <section class="readout" aria-label="当前频道">
       <span class="band">{{ dial.band }}</span>
       <div class="frequency"><span>{{ dial.value }}</span><small>{{ dial.unit }}</small></div>

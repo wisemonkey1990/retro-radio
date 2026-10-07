@@ -55,7 +55,9 @@ APK：`android/app/build/outputs/apk/debug/app-debug.apk`。应用 ID 为 `com.r
 docker compose up --build -d
 ```
 
-静态部署可参考 `nginx-static.conf`。GitHub Pages 使用 `.github/workflows/pages.yml`，在仓库 Settings → Pages 中选择 GitHub Actions。子路径构建使用 `VITE_BASE=/retro-radio/ npm run build`。
+静态部署可参考 `nginx-static.conf`。GitHub Pages 使用 `.github/workflows/pages.yml`，在仓库 Settings → Pages 中选择 GitHub Actions。`main` 更新后自动部署，也可手动运行流程；部署始终构建 `main`。子路径构建使用 `VITE_BASE=/retro-radio/ npm run build`。
+
+PWA 打开时和回到前台会检查更新。新版缓存接管后，暂停状态下自动刷新；播放中显示「暂停并更新」，不会强行中断收听。首次从旧的缓存更新机制迁移时，请关闭该站点的所有标签页后重新打开，或用无痕窗口确认最新界面。
 
 ## 目录
 
