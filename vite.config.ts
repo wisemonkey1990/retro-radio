@@ -21,6 +21,7 @@ export default defineConfig({
     }),
     VitePWA({
       registerType: 'autoUpdate',
+      includeAssets: ['favicon.png', 'apple-touch-icon.png'],
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff2}'],
         maximumFileSizeToCacheInBytes: 3000000, // 3MB
@@ -61,10 +62,10 @@ export default defineConfig({
             type: 'image/png'
           },
           {
-            src: 'icon-512x512.png',
+            src: 'icon-maskable-512x512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'maskable'
           }
         ],
         categories: ['music', 'entertainment', 'news', 'multimedia'],

@@ -2,14 +2,16 @@
 // sources, sleep timer, and the reactive state the UI renders.
 
 import { reactive, watch } from 'vue'
+import { connectWithBackup } from './connectionRace'
 import { DEFAULT_FX, createAmRadio, type AmRadio, type RadioFx, type RadioMode } from './audio/amRadio'
 import { startGenerative, type Generative } from './audio/generative'
 import { FREQ_MAX, FREQ_MIN, LOCK_WINDOW, PRESETS, SLEEP_STEPS, THEMES, type Lang, type PresetId, type Theme } from './data'
-import { curatedFor, lastStation, loadDirectory, probeStream, rememberStation, type Station } from './stations'
+import { curatedFor, lastStation, loadDirectory, readyStations, rememberStation, type Station } from './stations'
 
 const STORE_KEY = 'ai-radio:v1'
-const STREAM_TIMEOUT_MS = 9000
-const PROBE_TIMEOUT_MS = 4000
+const STREAM_TIMEOUT_MS = 4500
+const CONNECT_BUDGET_MS = 20_000
+const CURATED_BUDGET_MS = 6000
 const PROBE_BATCH = 4
 const STALL_TIMEOUT_MS = 12000
 const MAX_ATTEMPTS = 10
@@ -120,9 +122,12 @@ let radio: AmRadio | null = null
 let musicGain: GainNode
 let analyser: AnalyserNode
 let audioEl: HTMLAudioElement
+interface AudioDeck { element: HTMLAudioElement; gain: GainNode; owner: number; station?: Station; preset?: PresetId }
+const decks: AudioDeck[] = []
 let keepAlive: HTMLAudioElement
 let house: Generative | null = null
 let streamToken = 0
+let streamController: AbortController | null = null
 let localQueue: File[] = []
 let localIndex = 0
 
@@ -193,24 +198,35 @@ function ensureAudio() {
   radio.output.connect(analyser)
   analyser.connect(ctx.destination)
 
-  audioEl = new Audio()
-  audioEl.crossOrigin = 'anonymous' // required: Web Audio refuses to process opaque cross-origin media
-  audioEl.preload = 'none'
-  ctx.createMediaElementSource(audioEl).connect(musicGain)
-  for (const type of ['playing', 'pause', 'waiting', 'stalled', 'error', 'ended', 'emptied']) {
-    audioEl.addEventListener(type, () => {
-      const code = type === 'error' ? ` code=${audioEl.error?.code}` : ''
-      log(`stream ${type}${code} t=${audioEl.currentTime.toFixed(1)} ready=${audioEl.readyState}`)
+  // Keep one audible deck and two silent connection lanes. All elements are unlocked together
+  // inside the initial user gesture so Safari can also start the backup after an async lookup.
+  for (let i = 0; i < 3; i++) {
+    const element = new Audio()
+    element.crossOrigin = 'anonymous'
+    element.preload = 'none'
+    const gain = ctx.createGain()
+    gain.gain.value = 0
+    ctx.createMediaElementSource(element).connect(gain)
+    gain.connect(musicGain)
+    decks.push({ element, gain, owner: 0 })
+    for (const type of ['playing', 'pause', 'waiting', 'stalled', 'error', 'ended', 'emptied']) {
+      element.addEventListener(type, () => {
+        if (element !== audioEl) return
+        const code = type === 'error' ? ` code=${element.error?.code}` : ''
+        log(`stream ${type}${code} t=${element.currentTime.toFixed(1)} ready=${element.readyState}`)
+      })
+    }
+    element.addEventListener('playing', () => {
+      // An old stream resuming during handover must not dismiss the new stream's loading state.
+      if (element === audioEl && state.source === 'local') state.tuning = false
+    })
+    element.addEventListener('ended', () => {
+      if (element === audioEl && state.source === 'local') nextLocal()
     })
   }
+  audioEl = decks[0].element
   ctx.addEventListener('statechange', () => log(`audio context ${ctx?.state}`))
   keepAlive = createKeepAlive()
-  audioEl.addEventListener('playing', () => {
-    if (state.source === 'stream' || state.source === 'local') state.tuning = false
-  })
-  audioEl.addEventListener('ended', () => {
-    if (state.source === 'local') nextLocal()
-  })
   document.addEventListener('visibilitychange', onVisibility)
   watchLifecycle()
   return ctx
@@ -225,21 +241,41 @@ function log(message: string) {
 const preset = () => PRESETS.find((p) => p.id === state.preset) ?? PRESETS[0]
 
 // ------------------------------------------------------------------ sources
+function clearDeck(deck: AudioDeck) {
+  const el = deck.element
+  deck.owner = 0
+  deck.station = undefined
+  deck.preset = undefined
+  el.onerror = el.onended = el.onwaiting = el.onplaying = null
+  deck.gain.gain.cancelScheduledValues(ctx!.currentTime)
+  deck.gain.gain.setValueAtTime(0, ctx!.currentTime)
+  el.pause()
+  el.removeAttribute('src')
+  el.load()
+}
+
+function activateDeck(deck: AudioDeck) {
+  // Only the winner becomes audible; no double playback while two URLs race.
+  audioEl = deck.element
+  for (const other of decks) if (other !== deck) clearDeck(other)
+  house?.stop()
+  house = null
+  deck.gain.gain.setValueAtTime(1, ctx!.currentTime)
+}
+
 function stopSources() {
   streamToken++
+  streamController?.abort()
+  streamController = null
   clearTimeout(stallTimer)
-  if (audioEl) {
-    audioEl.onerror = audioEl.onended = audioEl.onwaiting = audioEl.onplaying = null
-    audioEl.pause()
-    audioEl.removeAttribute('src')
-    audioEl.load()
-  }
+  decks.forEach(clearDeck)
   house?.stop()
   house = null
 }
 
 function startHouse(why = '') {
   if (!ctx) return
+  house?.stop()
   house = startGenerative(ctx, musicGain, state.preset)
   state.source = 'house'
   state.station = ''
@@ -251,103 +287,152 @@ function startHouse(why = '') {
 const seen = new Map<PresetId, Set<string>>()
 let stallTimer = 0
 
-function playUrl(url: string, token: number): Promise<boolean> {
+function playUrl(deck: AudioDeck, url: string, token: number, signal: AbortSignal): Promise<boolean> {
+  if (token !== streamToken || signal.aborted) return Promise.resolve(false)
+  const element = deck.element
+  deck.owner = token
   return new Promise((resolve) => {
     let timer = 0
+    let finished = false
     const finish = (ok: boolean) => {
+      if (finished) return
+      finished = true
       clearTimeout(timer)
-      audioEl.removeEventListener('playing', onPlaying)
-      audioEl.removeEventListener('error', onError)
+      element.removeEventListener('playing', onPlaying)
+      element.removeEventListener('error', onError)
+      signal.removeEventListener('abort', onAbort)
+      if (!ok && deck.owner === token) clearDeck(deck)
       resolve(ok)
     }
-    const onPlaying = () => finish(true)
+    const onPlaying = () => finish(token === streamToken && !signal.aborted)
     const onError = () => finish(false)
-    audioEl.addEventListener('playing', onPlaying)
-    audioEl.addEventListener('error', onError)
+    const onAbort = () => finish(false)
+    if (token !== streamToken || signal.aborted) return finish(false)
+    element.addEventListener('playing', onPlaying)
+    element.addEventListener('error', onError)
+    signal.addEventListener('abort', onAbort, { once: true })
     timer = window.setTimeout(() => finish(false), STREAM_TIMEOUT_MS)
-    if (token !== streamToken) return finish(false)
-    audioEl.src = url
-    audioEl.play().catch(() => finish(false))
+    element.src = url
+    element.play().catch(() => finish(false))
   })
 }
 
-/** First URL of a station that answers a CORS request; mirrors are probed in parallel. */
-async function reachableUrl(st: Station): Promise<string | undefined> {
-  const urls = st.urls.slice(0, 3)
-  const ok = await Promise.all(urls.map((u) => probeStream(u, PROBE_TIMEOUT_MS)))
-  return urls[ok.indexOf(true)]
-}
-
-/**
- * Find a real station for the current preset: the last one that worked, then the curated
- * SomaFM channels, then the Radio Browser directory. Candidates are probed a few at a time
- * (so dead or CORS-less servers cost one timeout, not one each) and played in order.
- * Falls back to the built-in band when nothing works.
- */
+/** Keep the old station audible while two silent lanes race to produce playable audio. */
 async function startStream(fresh = true) {
+  streamController?.abort()
+  const controller = new AbortController()
+  streamController = controller
+  const signal = controller.signal
   const token = ++streamToken
+  const started = performance.now()
+  const deadline = window.setTimeout(() => controller.abort(), CONNECT_BUDGET_MS)
+  clearTimeout(stallTimer)
+  audioEl.onerror = audioEl.onended = audioEl.onwaiting = audioEl.onplaying = null
+  const previousDeck = decks.find(deck => deck.element === audioEl)!
+  const hadStream = !!previousDeck.station && previousDeck.gain.gain.value > 0 && !audioEl.paused && audioEl.readyState >= 3
   const preset = state.preset
   const tried = seen.get(preset) ?? new Set<string>()
   seen.set(preset, tried)
-  if (fresh) tried.clear() // re-tuning starts from the best known station again
+  if (fresh) tried.clear()
   state.source = 'stream'
-  state.station = ''
-  state.note = '正在搜索电台…'
-
+  if (!hadStream) state.station = ''
+  state.note = hadStream ? '正在换台，连接期间继续收听…' : '正在连接电台…'
   const last = lastStation(preset)
+  const stationKey = (station: Station) => [...station.urls].sort()[0]
   const candidates = (...lists: Station[][]) => {
-    const unique = new Map([...lists.flat()].map((s) => [s.urls[0], s]))
-    return [...unique.values()].filter((s) => !tried.has(s.urls[0]))
+    const unique = new Map<string, Station>()
+    for (const station of lists.flat()) {
+      const key = stationKey(station)
+      if (!unique.has(key)) unique.set(key, station)
+    }
+    return [...unique.values()].filter(station => !tried.has(stationKey(station)))
   }
-
-  const directoryPromise = loadDirectory(preset, state.lang) // fetched while the curated stations are tried
-
+  const directoryPromise = loadDirectory(preset, state.lang)
   let attempts = 0
-  let reachable = 0
-  let probed = 0
-  const run = async (list: Station[]) => {
-    for (let i = 0; i < list.length; i += PROBE_BATCH) {
-      if (token !== streamToken || attempts >= MAX_ATTEMPTS) return false
-      const batch = list.slice(i, i + PROBE_BATCH)
-      state.note = `正在连接 ${batch[0].name}…`
-      const urls = await Promise.all(batch.map(reachableUrl))
-      probed += batch.length
-      reachable += urls.filter(Boolean).length
-      for (let k = 0; k < batch.length; k++) {
-        if (token !== streamToken) return false
-        const st = batch[k]
-        tried.add(st.urls[0])
-        if (!urls[k] || attempts >= MAX_ATTEMPTS) continue
-        attempts++
-        state.note = `正在连接 ${st.name}…`
-        if (await playUrl(urls[k]!, token)) {
-          if (token !== streamToken) return false
-          state.station = st.name
-          state.note = st.country ? `${st.name} · ${st.country}` : st.name
-          rememberStation(preset, st)
-          log(`已连接 ${st.name}`)
-          updateMediaSession(st.name)
-          watchStream(token)
-          return true
-        }
+  type Candidate = { station: Station; url: string }
+  const lanes = decks.filter(deck => deck.element !== audioEl)
+  const race = async (list: AsyncIterable<Candidate> | Iterable<Candidate> | ((signal: AbortSignal) => AsyncIterable<Candidate>), phaseSignal: AbortSignal, attemptLimit = MAX_ATTEMPTS) => {
+    const result = await connectWithBackup(list, async ({ station, url }, lane, attemptSignal) => {
+      if (phaseSignal.aborted || token !== streamToken || attempts >= attemptLimit) return false
+      attempts++
+      tried.add(stationKey(station))
+      return playUrl(lanes[lane], url, token, attemptSignal)
+    }, phaseSignal)
+    if (!result || signal.aborted || token !== streamToken) {
+      if (token === streamToken) lanes.forEach(clearDeck)
+      return false
+    }
+    const { station, url } = result.candidate
+    const winner = lanes[result.lane]
+    activateDeck(winner)
+    winner.station = station
+    winner.preset = preset
+    state.station = station.name
+    state.tuning = false
+    state.note = station.country ? `${station.name} · ${station.country}` : station.name
+    rememberStation(preset, station, url)
+    log(`已连接 ${station.name} · ${Math.round(performance.now() - started)}ms · 尝试 ${attempts} 次 · 并行换台`)
+    updateMediaSession(station.name)
+    watchStream(token)
+    return true
+  }
+  function* direct(list: Station[]): Generator<Candidate> {
+    // Give the first station a backup on another host, then alternate stations before retrying mirrors.
+    const first = list[0]
+    if (first) for (const url of first.urls.slice(0, 2)) yield { station: first, url }
+    for (let mirror = 0; mirror < 3; mirror++) {
+      for (const station of list) {
+        if (station === first && mirror < 2) continue
+        const url = station.urls[mirror]
+        if (url) yield { station, url }
       }
     }
-    return false
   }
-
-  if (await run(candidates(last ? [last] : [], curatedFor(preset, state.lang)))) return
-  if (token !== streamToken) return
-  const directory = await directoryPromise
-  if (token !== streamToken) return
-  if (await run(candidates(directory))) return
-  if (token !== streamToken) return
-  // pool exhausted or unreachable: start over next time, and keep the music going meanwhile
-  tried.clear()
-  startHouse(
-    directory.length
-      ? `检测了 ${probed} 个电台，${reachable} 个可连接，但都没能开始播放`
-      : `电台目录连不上，精选电台也没有响应（检测了 ${probed} 个）`,
-  )
+  async function* directoryCandidates(list: Station[], probeSignal: AbortSignal): AsyncGenerator<Candidate> {
+    for (let i = 0; i < list.length && !probeSignal.aborted && token === streamToken && attempts < MAX_ATTEMPTS; i += PROBE_BATCH) {
+      yield* readyStations(list.slice(i, i + PROBE_BATCH), probeSignal)
+    }
+  }
+  try {
+    const preferred = candidates(last ? [last] : [], curatedFor(preset, state.lang))
+    const phase = new AbortController()
+    const cancelPhase = () => phase.abort()
+    signal.addEventListener('abort', cancelPhase, { once: true })
+    const phaseTimer = window.setTimeout(cancelPhase, CURATED_BUDGET_MS)
+    try {
+      if (await race(direct(preferred), phase.signal, 6)) return
+    } finally {
+      clearTimeout(phaseTimer)
+      phase.abort()
+      signal.removeEventListener('abort', cancelPhase)
+    }
+    if (signal.aborted || token !== streamToken) return
+    const directory = candidates(await directoryPromise)
+    if (await race(probeSignal => directoryCandidates(directory, probeSignal), signal)) return
+  } finally {
+    clearTimeout(deadline)
+    if (token === streamToken && state.tuning && state.playing) {
+      tried.clear()
+      lanes.forEach(clearDeck)
+      if (hadStream && !audioEl.paused && !audioEl.ended) {
+        state.source = 'stream'
+        state.tuning = false
+        if (previousDeck.preset) {
+          state.preset = previousDeck.preset
+          state.freq = PRESETS.find(p => p.id === previousDeck.preset)!.freq
+          state.locked = true
+          tunedPreset = previousDeck.preset
+        }
+        state.station = previousDeck.station!.name
+        state.note = '新电台暂时连不上，继续收听当前电台 · 点「换台」重试'
+        watchStream(token)
+      } else {
+        decks.forEach(clearDeck)
+        startHouse(signal.aborted ? '连接超时' : '暂时没有可播放的电台')
+      }
+      log(`网络电台连接失败 · ${Math.round(performance.now() - started)}ms · 尝试 ${attempts} 次`)
+    }
+  }
 }
 
 /** Once a stream is playing: a dropped or stalled connection moves on to another station. */
@@ -446,6 +531,7 @@ function nextLocal() {
 }
 
 function playLocalAt(i: number) {
+  activateDeck(decks.find(deck => deck.element === audioEl)!)
   const f = localQueue[i]
   audioEl.src = URL.createObjectURL(f)
   audioEl.play().catch(() => undefined)
@@ -489,8 +575,10 @@ export async function play() {
   if (state.playing) return
   const c = ensureAudio()
   const resumed = c.resume()
-  audioEl.src = SILENT_WAV
-  audioEl.play().catch(() => undefined)
+  for (const deck of decks) {
+    deck.element.src = SILENT_WAV
+    deck.element.play().catch(() => undefined)
+  }
   keepAlive.play().catch((e) => log(`keep-alive play failed: ${e?.name}`))
   await resumed
   if (state.playing) return
@@ -522,7 +610,7 @@ function goStatic() {
 }
 
 function startSource() {
-  radio?.tuneSweep()
+  if (!audioEl || audioEl.paused) radio?.tuneSweep()
   if (localQueue.length) return playLocalAt(localIndex)
   if (!state.locked) return goStatic()
   tunedPreset = state.preset
@@ -566,20 +654,16 @@ export async function tune(id: PresetId) {
   localQueue = []
   localIndex = 0
   if (!state.playing) return play()
-  // tapping the channel that is on the air again stops it
-  if (sameChannel && state.source !== 'local' && state.source !== 'static') return pause()
+  // Selecting the current channel keeps playback running; the player owns pause.
+  if (sameChannel && state.source !== 'local' && state.source !== 'static') return
   state.tuning = true
-  stopSources()
   startSource()
-  updateMediaSession()
 }
 
 /** Dial on to another station of the current preset. */
 export function nextStation() {
   if (!state.playing || state.source === 'local' || state.source === 'static') return
   state.tuning = true
-  stopSources()
-  radio?.tuneSweep()
   void startStream(false)
 }
 
@@ -609,9 +693,7 @@ function settle() {
     localQueue = []
     localIndex = 0
     state.tuning = true
-    stopSources()
     startSource()
-    updateMediaSession()
   } else if (state.source !== 'local' && state.source !== 'static') {
     stopSources()
     radio?.tuneSweep()

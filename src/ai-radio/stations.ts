@@ -16,7 +16,7 @@ export interface Station {
   country?: string
   bitrate?: number
   votes?: number
-  /** where it came from; curated stations are trusted and not probed */
+  /** Curated stations can be connected directly; directory stations require a CORS probe. */
   origin: 'curated' | 'directory'
 }
 
@@ -109,6 +109,7 @@ interface DirectoryRow {
 const firstOk = <T>(ps: Array<Promise<T>>) =>
   new Promise<T>((resolve, reject) => {
     let left = ps.length
+    if (!left) { reject(new Error('no candidates')); return }
     for (const p of ps) p.then(resolve, () => --left === 0 && reject(new Error('all failed')))
   })
 
@@ -124,8 +125,10 @@ async function directoryFetch(q: Query): Promise<DirectoryRow[]> {
     ...(q.language ? { language: q.language } : {}),
     ...(q.countrycode ? { countrycode: q.countrycode } : {}),
   })
+  const controllers: AbortController[] = []
   const ask = async (server: string) => {
     const ac = new AbortController()
+    controllers.push(ac)
     const timer = setTimeout(() => ac.abort(), 5000)
     try {
       const res = await fetch(`${server}/json/stations/search?${params}`, { signal: ac.signal })
@@ -139,6 +142,9 @@ async function directoryFetch(q: Query): Promise<DirectoryRow[]> {
     return await firstOk(SERVERS.map(ask))
   } catch {
     return []
+  } finally {
+    // Do not keep downloading the same directory from losing mirrors on mobile.
+    controllers.forEach(ac => ac.abort())
   }
 }
 
@@ -214,8 +220,10 @@ export function loadDirectory(preset: PresetId, lang: Lang): Promise<Station[]> 
         }
         return [...seen.values()].sort((a, b) => score(b) - score(a)).slice(0, 60)
       }
-      const global = await build(GLOBAL_QUERIES[preset])
-      const chinese = lang === 'zh' && CHINESE_QUERIES[preset] ? await build(CHINESE_QUERIES[preset]!) : []
+      const [global, chinese] = await Promise.all([
+        build(GLOBAL_QUERIES[preset]),
+        lang === 'zh' && CHINESE_QUERIES[preset] ? build(CHINESE_QUERIES[preset]!) : Promise.resolve([]),
+      ])
       const list = interleave(global, chinese.slice(0, 20))
       if (list.length) writeCache(key, list)
       return list
@@ -225,31 +233,86 @@ export function loadDirectory(preset: PresetId, lang: Lang): Promise<Station[]> 
   return p
 }
 
-/**
- * Can Web Audio use this stream? Sends a CORS request and only reads the headers, so a server
- * that doesn't allow cross-origin access (or is dead) is rejected within `ms`.
- */
-export async function probeStream(url: string, ms = 5000): Promise<boolean> {
+// Short-lived session cache avoids rechecking healthy mirrors and repeatedly timing out dead ones.
+const probeCache = new Map<string, { ok: boolean; expires: number }>()
+const GOOD_PROBE_TTL_MS = 5 * 60_000
+const BAD_PROBE_TTL_MS = 30_000
+
+/** CORS headers only; abort the body immediately to avoid downloading the stream twice. */
+export async function probeStream(url: string, ms = 2500, signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return false
+  const cached = probeCache.get(url)
+  if (cached && cached.expires > Date.now()) return cached.ok
   const ac = new AbortController()
-  const timer = setTimeout(() => ac.abort(), ms)
+  const cancel = () => ac.abort()
+  signal?.addEventListener('abort', cancel, { once: true })
+  const timer = setTimeout(cancel, ms)
+  let ok = false
   try {
     const res = await fetch(url, { mode: 'cors', signal: ac.signal, cache: 'no-store' })
     const type = res.headers.get('content-type') || ''
-    return res.ok && (/audio|ogg|mpeg|aac|octet-stream/i.test(type) || type === '')
+    ok = res.ok && (/audio|ogg|mpeg|aac|octet-stream/i.test(type) || type === '')
   } catch {
-    return false
+    // Timeout or unsupported CORS: try another address.
   } finally {
     clearTimeout(timer)
-    ac.abort() // we only wanted the headers
+    signal?.removeEventListener('abort', cancel)
+    ac.abort()
+  }
+  // Cancelling a previous selection says nothing about the health of its station.
+  if (signal?.aborted) return false
+  probeCache.set(url, { ok, expires: Date.now() + (ok ? GOOD_PROBE_TTL_MS : BAD_PROBE_TTL_MS) })
+  return ok
+}
+
+/** First healthy mirror wins; a slow or dead mirror must not hold up a healthy one. */
+export async function reachableUrl(station: Station, signal?: AbortSignal): Promise<string | undefined> {
+  if (signal?.aborted) return undefined
+  const ac = new AbortController()
+  const cancel = () => ac.abort()
+  signal?.addEventListener('abort', cancel, { once: true })
+  try {
+    return await firstOk(station.urls.slice(0, 3).map(async url => {
+      if (!await probeStream(url, 2500, ac.signal)) throw new Error('unreachable')
+      return url
+    }))
+  } catch {
+    return undefined
+  } finally {
+    ac.abort()
+    signal?.removeEventListener('abort', cancel)
+  }
+}
+
+/** Yield ready stations immediately instead of waiting for the slowest member of the batch. */
+export async function* readyStations(stations: Station[], signal: AbortSignal, excludedUrls = new Set<string>()) {
+  const ac = new AbortController()
+  const cancel = () => ac.abort()
+  signal.addEventListener('abort', cancel, { once: true })
+  if (signal.aborted) ac.abort()
+  const pending = new Map(stations.map((station, index) => [index,
+    reachableUrl({ ...station, urls: station.urls.filter(url => !excludedUrls.has(url)) }, ac.signal)
+      .then(url => ({ index, station, url })),
+  ]))
+  try {
+    while (pending.size && !signal.aborted) {
+      const result = await Promise.race(pending.values())
+      pending.delete(result.index)
+      if (result.url && !signal.aborted) yield { station: result.station, url: result.url }
+    }
+  } finally {
+    ac.abort()
+    signal.removeEventListener('abort', cancel)
   }
 }
 
 const LAST_KEY = 'ai-radio:last:v1'
 
-export function rememberStation(preset: PresetId, station: Station) {
+export function rememberStation(preset: PresetId, station: Station, url = station.urls[0]) {
   try {
     const all = JSON.parse(localStorage.getItem(LAST_KEY) || '{}')
-    all[preset] = station
+    // Reuse the mirror that actually played, rather than always retrying the original first URL.
+    all[preset] = { ...station, urls: [url, ...station.urls.filter(u => u !== url)] }
     localStorage.setItem(LAST_KEY, JSON.stringify(all))
   } catch {
     /* ignore */

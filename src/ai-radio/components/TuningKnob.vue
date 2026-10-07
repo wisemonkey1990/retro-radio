@@ -12,10 +12,10 @@ const angleOf = (f: number) => ((f - FREQ_MIN) / (FREQ_MAX - FREQ_MIN)) * SWEEP 
 const freqOf = (a: number) => FREQ_MIN + ((a + SWEEP) / (SWEEP * 2)) * (FREQ_MAX - FREQ_MIN)
 
 const W = 260
-const H = 252
+const H = 218
 const CX = W / 2
-const CY = 144
-const R = 106
+const CY = 124
+const R = 100
 const at = (deg: number, r: number) => ({ x: CX + r * Math.sin((deg * Math.PI) / 180), y: CY - r * Math.cos((deg * Math.PI) / 180) })
 
 const ticks = computed(() => {
@@ -29,7 +29,7 @@ const ticks = computed(() => {
   }
   return out
 })
-const labels = computed(() => [90, 95, 100, 105].map((f) => ({ f, ...at(angleOf(f), R - 24) })))
+const labels = computed(() => [90, 95, 100, 105].map((f) => ({ f, ...at(angleOf(f), R + 18) })))
 const marks = computed(() => PRESETS.map((p) => ({ id: p.id, freq: p.freq, ...at(angleOf(p.freq), R + 9) })))
 
 const angle = computed(() => angleOf(props.modelValue))
