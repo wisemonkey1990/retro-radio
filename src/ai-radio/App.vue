@@ -51,11 +51,11 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
       <div class="presets"><button v-for="p in PRESETS" :key="p.id" class="preset" :class="{ active: state.locked && p.id === state.preset }" :aria-pressed="state.locked && p.id === state.preset" @click="tune(p.id)"><i v-if="state.locked && p.id === state.preset" class="led" />{{ p.name }}</button></div>
     </section>
     <div class="shortcuts">
-      <button @click="openSettings('sound')"><span aria-hidden="true">≋</span>音色 · {{ mode.label }}<span class="chevron">›</span></button>
-      <button @click="sleep = true"><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg>定时 · {{ state.sleepMin ? `${state.sleepMin}分` : '关闭' }}<span class="chevron">›</span></button>
+      <button @click="openSettings('sound')"><span aria-hidden="true">≋</span>音色 · {{ mode.label }}<span class="chevron" aria-hidden="true">›</span></button>
+      <button @click="sleep = true"><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg>定时 · {{ state.sleepMin ? `${state.sleepMin}分` : '关闭' }}<span class="chevron" aria-hidden="true">›</span></button>
     </div>
     <footer class="playback">
-      <div class="elapsed playback-control" aria-label="已播放时间"><time>{{ mmss(state.elapsed) }}</time></div>
+      <div class="elapsed playback-control" role="timer" aria-label="已播放时间"><time>{{ mmss(state.elapsed) }}</time></div>
       <button class="play-button playback-control" :aria-label="state.playing ? '暂停' : '播放'" :aria-pressed="state.playing" @click="togglePlay()"><svg viewBox="0 0 32 32" width="32" height="32" fill="currentColor" aria-hidden="true"><template v-if="state.playing"><rect x="8" y="6" width="5" height="20" rx="1"/><rect x="19" y="6" width="5" height="20" rx="1"/></template><path v-else d="M11 5 27 16 11 27Z"/></svg></button>
       <button class="swap playback-control" aria-label="换台" :disabled="!canSwap" @click="nextStation()"><svg aria-hidden="true" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2.4 5.7"/></svg></button>
       <small v-if="state.sleepMin" class="sleep-countdown">{{ mmss(state.sleepLeft) }} 后暂停</small>
@@ -64,7 +64,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
   <SettingsSheet v-if="settings" :initial-section="initialSection" @close="settings = false" />
   <BottomSheet v-if="sleep" title="定时暂停" @close="sleep = false">
     <p class="hint">选一个时间，让音乐陪你慢慢入睡。</p>
-    <div class="sleep-options"><button v-for="minutes in SLEEP_STEPS" :key="minutes" :class="{ selected: state.sleepMin === minutes }" :aria-pressed="state.sleepMin === minutes" @click="setSleep(minutes)">{{ minutes ? `${minutes} 分钟` : '关闭' }}</button></div>
+    <div class="sleep-options" role="group" aria-label="定时时长"><button v-for="minutes in SLEEP_STEPS" :key="minutes" :class="{ selected: state.sleepMin === minutes }" :aria-pressed="state.sleepMin === minutes" @click="setSleep(minutes)">{{ minutes ? `${minutes} 分钟` : '关闭' }}</button></div>
     <p class="hint" role="status">{{ state.sleepMin ? `剩余 ${mmss(state.sleepLeft)}，到点自动暂停。` : '持续收听，不自动暂停。' }}</p>
   </BottomSheet>
 </template>
