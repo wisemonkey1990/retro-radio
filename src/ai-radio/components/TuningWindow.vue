@@ -6,10 +6,17 @@ import type { RadioMode } from '../audio/amRadio'
 const props = defineProps<{ modelValue: number; mode: RadioMode; tuning: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [freq: number] }>()
 const glass = ref<HTMLElement>()
-// A wider ruler moves behind a fixed centre needle rather than compressing the entire band.
+// Keep the ruler inside the window; near either end the needle leaves the centre.
 const STEP = 44
+const EDGE = 20
 const xOf = (freq: number) => (freq - FREQ_MIN) * STEP
-const offset = computed(() => 180 - xOf(props.modelValue))
+const minOffset = 360 - EDGE - xOf(FREQ_MAX)
+const offset = computed(() => Math.max(minOffset, Math.min(EDGE, 180 - xOf(props.modelValue))))
+const needle = computed(() => xOf(props.modelValue) + offset.value)
+const scanStyle = computed(() => ({
+  '--scan-left': `${Math.max(-20, minOffset - offset.value)}px`,
+  '--scan-right': `${Math.min(20, EDGE - offset.value)}px`,
+}))
 const dragging = ref(false)
 let startX = 0
 let startFreq = 0
@@ -42,7 +49,8 @@ function release(e: PointerEvent) {
   if (!glass.value!.hasPointerCapture(e.pointerId)) return
   if (e.type === 'pointerup' && !moved) {
     const rect = glass.value!.getBoundingClientRect()
-    emit('update:modelValue', props.modelValue + (e.clientX - rect.left - rect.width / 2) / pixelsPerMHz)
+    const position = (e.clientX - rect.left) / rect.width * 360
+    emit('update:modelValue', FREQ_MIN + (position - offset.value) / STEP)
   }
   glass.value!.releasePointerCapture(e.pointerId)
   dragging.value = false
@@ -73,13 +81,13 @@ function wheel(e: WheelEvent) {
           <text x="20" y="25" class="window-band">{{ dial.band }}</text>
           <text x="340" y="25" class="window-band" text-anchor="end">{{ dial.unit }}</text>
           <g class="window-ruler" :style="{ transform: `translateX(${offset}px)` }">
-            <g class="window-scan" :class="{ searching: tuning && !dragging }">
+            <g class="window-scan" :style="scanStyle" :class="{ searching: tuning && !dragging }">
               <line x1="0" y1="82" :x2="xOf(FREQ_MAX)" y2="82" class="window-baseline" />
               <line v-for="(tick, i) in ticks" :key="i" :x1="tick.x" :x2="tick.x" :y1="tick.major ? 44 : 63" y2="82" class="window-tick" :class="{ major: tick.major }" />
               <text v-for="label in labels" :key="label.x" :x="label.x" y="111" class="window-label" text-anchor="middle">{{ label.value }}</text>
             </g>
           </g>
-          <g class="window-needle" transform="translate(180, 0)">
+          <g class="window-needle" :style="{ transform: `translateX(${needle}px)` }">
             <path d="M-4 36H4L0 44Z" fill="currentColor" />
             <line x1="0" y1="43" x2="0" y2="128" stroke="currentColor" stroke-width="2" />
           </g>
@@ -101,11 +109,11 @@ function wheel(e: WheelEvent) {
 .window-tick { stroke: #d6bc91; stroke-width: 1.2; }
 .window-tick.major { stroke: #f0dfbe; stroke-width: 1.8; }
 .window-label { fill: #f0dfbe; font: 16px var(--mono); }
-.window-ruler { transition: transform .6s cubic-bezier(.22, 1, .36, 1); }
-.dragging .window-ruler { transition: none; }
+.window-ruler, .window-needle { transition: transform .6s cubic-bezier(.22, 1, .36, 1); }
+.dragging .window-ruler, .dragging .window-needle { transition: none; }
 .window-scan.searching { animation: tuning-scan 1.6s ease-in-out infinite; }
-@keyframes tuning-scan { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(-20px); } 70% { transform: translateX(20px); } }
-@media (prefers-reduced-motion: reduce) { .window-ruler { transition: none; } .window-scan.searching { animation: none; } }
+@keyframes tuning-scan { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(var(--scan-left)); } 70% { transform: translateX(var(--scan-right)); } }
+@media (prefers-reduced-motion: reduce) { .window-ruler, .window-needle { transition: none; } .window-scan.searching { animation: none; } }
 .window-needle { color: #ff743e; filter: drop-shadow(0 0 4px #ff6d36); }
 .tuning-hint { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 10px 0 0; color: var(--text-6); font-size: 12px; }
 .tuning-hint span { font-size: 18px; line-height: 1; }
