@@ -21,7 +21,7 @@ const status = computed(() => {
   if (state.source === 'static') return '未锁定频道 · 电波沙沙声'
   return '正在播放'
 })
-const station = computed(() => state.source === 'local' ? '本地音乐' : state.station || (state.source === 'house' ? '内置乐队' : state.locked ? current.value.tagline : '转动旋钮，寻找一个频道'))
+const station = computed(() => state.source === 'local' ? '本地音乐' : state.station || (state.source === 'house' ? '内置乐队' : state.locked ? current.value.tagline : '左右滑动，寻找一个频道'))
 const canSwap = computed(() => state.playing && !state.tuning && state.locked && state.source !== 'local' && state.source !== 'static')
 function openSettings(section: 'general' | 'sound') { initialSection.value = section; settings.value = true }
 function onKey(e: KeyboardEvent) {
@@ -45,7 +45,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
       <p class="station">{{ station }}</p>
       <p class="play-status" role="status" :class="{ busy: state.tuning }"><i class="led" :class="{ dim: !state.playing }" />{{ status }}</p>
     </section>
-    <TuningWindow :model-value="state.freq" :mode="state.mode" @update:model-value="setFrequency" />
+    <TuningWindow :model-value="state.freq" :mode="state.mode" :tuning="state.tuning" @update:model-value="setFrequency" />
     <section class="channels" aria-labelledby="channels-heading">
       <h2 id="channels-heading" class="section-title">场景频道</h2>
       <div class="presets"><button v-for="p in PRESETS" :key="p.id" class="preset" :class="{ active: state.locked && p.id === state.preset }" :aria-pressed="state.locked && p.id === state.preset" @click="tune(p.id)"><i v-if="state.locked && p.id === state.preset" class="led" />{{ p.name }}</button></div>
