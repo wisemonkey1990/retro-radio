@@ -1,5 +1,7 @@
 # 复古电台（Retro Radio）
 
+[在线体验：https://wisemonkey1990.github.io/retro-radio/](https://wisemonkey1990.github.io/retro-radio/)
+
 从 [wisemonkey1990/global-radio](https://github.com/wisemonkey1990/global-radio) 的复古电台模块拆分，保留原 Git 历史。当前源码不包含经典版的搜索、收藏、历史页面、路由、Pinia 状态或播放器。
 
 ## 功能
