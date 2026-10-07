@@ -4,7 +4,6 @@ import { THEMES } from '../data'
 import FxPanel from './FxPanel.vue'
 import { diagnostics, playLocalFiles, setMains, setTheme, state } from '../engine'
 
-const base = import.meta.env.BASE_URL
 const emit = defineEmits<{ close: [] }>()
 const files = ref<HTMLInputElement>()
 
@@ -78,7 +77,6 @@ async function copyDiag() {
 
       <p class="credit">
         网络信号源：精选的 <a href="https://somafm.com" target="_blank" rel="noopener">SomaFM</a> 频道，以及 <a href="https://www.radio-browser.info" target="_blank" rel="noopener">Radio Browser</a> 社区目录里按风格挑出的真实电台（只选支持音效处理的 https 流）。点右上角「换台」可在同一频道里换下一个；全都收不到时切换到内置乐队。<br />
-        <a :href="`${base}classic/`">打开经典版全球电台（搜索 / 收藏 / 历史）</a>
       </p>
     </section>
   </div>

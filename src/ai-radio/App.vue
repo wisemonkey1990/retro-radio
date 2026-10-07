@@ -55,7 +55,7 @@ onBeforeUnmount(() => {
 <template>
   <main class="radio" :class="[`mode-${state.mode}`, { on: state.playing }]">
     <header class="top">
-      <span class="brand">GLOBAL<span> AI RADIO</span></span>
+      <span class="brand">RETRO<span> RADIO</span></span>
       <button class="onair" :class="{ live: state.playing, sleep: state.playing && state.sleepMin > 0 }" :aria-pressed="state.playing" @click="togglePlay()">
         <i class="led" />
         <span>{{ state.playing ? 'ON AIR' : 'OFF AIR' }}</span>

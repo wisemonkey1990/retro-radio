@@ -28,16 +28,6 @@
 -keep class androidx.webkit.** { *; }
 -keep class android.webkit.** { *; }
 
-# Keep media session classes
--keep class android.support.v4.media.** { *; }
--keep class androidx.media.** { *; }
-
-# Keep audio focus classes
--keep class android.media.** { *; }
-
-# Keep notification classes
--keep class androidx.core.app.NotificationCompat** { *; }
-
 # Keep JavaScript interface
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
