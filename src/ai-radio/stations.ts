@@ -53,9 +53,10 @@ const qt = (id: number, name: string): Station => ({
   origin: 'curated',
 })
 const direct = (url: string, name: string, country = 'CN'): Station => ({ name, urls: [url], country, origin: 'curated' })
+const cnr = (channel: string, name: string): Station => direct(`https://apppc.cnr.cn/national?cf=${channel}`, name)
 
 const CURATED_CN: Record<PresetId, Station[]> = {
-  mood: [qt(332, '北京音乐广播'), qt(1271, '深圳音乐广播'), qt(20847, '长沙音乐广播'), qt(4581, 'AsiaFM 亚洲音乐台')],
+  mood: [cnr('yyzs', '央广音乐之声'), cnr('zgzs', '央广中国之声'), qt(332, '北京音乐广播'), qt(1271, '深圳音乐广播'), qt(20847, '长沙音乐广播'), qt(4581, 'AsiaFM 亚洲音乐台')],
   discover: [qt(1671, '济南音乐广播'), qt(15318146, '杭州潮流音乐电台'), qt(4938, '江苏经典流行音乐广播'), qt(1110, '四川音乐广播')],
   focus: [qt(267, '上海经典音乐广播'), direct('https://radio.chinesemusicworld.com/chinesemusic.mp3', 'Chinese Classical Music')],
   road: [qt(1260, '广东音乐之声'), qt(1947, '安徽音乐广播'), qt(15318294, '宁夏音乐广播'), qt(1683, '烟台音乐广播')],
@@ -63,6 +64,41 @@ const CURATED_CN: Record<PresetId, Station[]> = {
   oldies: [qt(5022308, '500首华语经典'), qt(1296, '湖北经典音乐广播'), qt(1223, '郑州经典音乐广播'), qt(4885, '陕西青少广播 好听1055')],
   sport: [qt(15318146, '杭州潮流音乐电台'), qt(5022379, '星空电台 STAR RADIO'), direct('https://antares.dribbcast.com/proxy/apop?mp=/s', 'Big B Radio 亚洲音乐台')],
   jazz: [direct('https://radio.nitro-server.uk/listen/1940sshanghaioldtimesmusicradio/radio.mp3', '上海麗都廣播電台 · 1940s'), direct('https://az1.mediacp.eu/listen/airport-lounge-radio/radio.mp3', '休息音乐 · Airport Lounge', '')],
+}
+
+const resolvedSourceCache = new Map<string, { url: string; expires: number }>()
+const SOURCE_CACHE_MS = 10 * 60_000
+const MEDIA_URL = /https?:\/\/[^\s"'<>\\]+(?:\.m3u8?|\.mp3|\.aac|\.flv)(?:\?[^\s"'<>\\]*)?/gi
+
+function mediaUrls(value: unknown, out: string[] = []): string[] {
+  if (typeof value === 'string') {
+    for (const match of value.matchAll(MEDIA_URL)) out.push(match[0].replace(/[),;]+$/, ''))
+    if (/^https?:\/\//i.test(value) && /\.(?:m3u8?|mp3|aac|flv)(?:\?|$)/i.test(value)) out.push(value)
+  } else if (Array.isArray(value)) value.forEach(item => mediaUrls(item, out))
+  else if (value && typeof value === 'object') Object.values(value).forEach(item => mediaUrls(item, out))
+  return [...new Set(out)]
+}
+
+/** Resolve meowRadio-compatible CNR channel API URLs to the currently signed stream. */
+export async function resolveStationUrl(raw: string, signal?: AbortSignal): Promise<string> {
+  if (!raw.includes('apppc.cnr.cn/national')) return raw
+  const cached = resolvedSourceCache.get(raw)
+  if (cached && cached.expires > Date.now()) return cached.url
+  const ac = new AbortController()
+  const cancel = () => ac.abort()
+  signal?.addEventListener('abort', cancel, { once: true })
+  const timer = setTimeout(() => ac.abort(), 4500)
+  try {
+    const response = await fetch(raw, { mode: 'cors', cache: 'no-store', signal: ac.signal })
+    if (!response.ok) return raw
+    const text = await response.text()
+    let values: unknown = text
+    try { values = JSON.parse(text) } catch { /* JSONP or plain response; regex below still works */ }
+    const url = mediaUrls(values)[0]
+    if (url) { resolvedSourceCache.set(raw, { url, expires: Date.now() + SOURCE_CACHE_MS }); return url }
+    return raw
+  } catch { return raw }
+  finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); ac.abort() }
 }
 
 /** Stations known to work without the directory: Chinese ones first for Chinese users, then SomaFM. */

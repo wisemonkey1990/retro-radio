@@ -6,7 +6,7 @@ import { connectWithBackup } from './connectionRace'
 import { DEFAULT_FX, createAmRadio, type AmRadio, type RadioFx, type RadioMode } from './audio/amRadio'
 import { startGenerative, type Generative } from './audio/generative'
 import { FREQ_MAX, FREQ_MIN, LOCK_WINDOW, PRESETS, SLEEP_STEPS, THEMES, type Lang, type PresetId, type Theme } from './data'
-import { curatedFor, lastStation, loadDirectory, readyStations, rememberStation, type Station } from './stations'
+import { curatedFor, lastStation, loadDirectory, readyStations, rememberStation, resolveStationUrl, type Station } from './stations'
 
 const STORE_KEY = 'ai-radio:v1'
 const STREAM_TIMEOUT_MS = 4500
@@ -376,15 +376,15 @@ async function startStream(fresh = true) {
     watchStream(token)
     return true
   }
-  function* direct(list: Station[]): Generator<Candidate> {
+  async function* direct(list: Station[], directSignal: AbortSignal): AsyncGenerator<Candidate> {
     // Give the first station a backup on another host, then alternate stations before retrying mirrors.
     const first = list[0]
-    if (first) for (const url of first.urls.slice(0, 2)) yield { station: first, url }
+    if (first) for (const url of first.urls.slice(0, 2)) yield { station: first, url: await resolveStationUrl(url, directSignal) }
     for (let mirror = 0; mirror < 3; mirror++) {
       for (const station of list) {
         if (station === first && mirror < 2) continue
         const url = station.urls[mirror]
-        if (url) yield { station, url }
+        if (url) yield { station, url: await resolveStationUrl(url, directSignal) }
       }
     }
   }
@@ -400,7 +400,7 @@ async function startStream(fresh = true) {
     signal.addEventListener('abort', cancelPhase, { once: true })
     const phaseTimer = window.setTimeout(cancelPhase, CURATED_BUDGET_MS)
     try {
-      if (await race(direct(preferred), phase.signal, 6)) return
+      if (await race(directSignal => direct(preferred, directSignal), phase.signal, 6)) return
     } finally {
       clearTimeout(phaseTimer)
       phase.abort()
