@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { probeStream, reachableUrl, readyStations, loadDirectory, rememberStation, lastStation } from '../src/ai-radio/stations.ts'
+import { probeStream, reachableUrl, readyStations, loadDirectory, rememberStation, lastStation, resolveStationUrl } from '../src/ai-radio/stations.ts'
 
 const forever = new Promise(() => {})
 const response = () => new Response('', { headers: { 'content-type': 'audio/mpeg' } })
@@ -30,6 +30,18 @@ test('a healthy mirror is returned without waiting for an unresponsive first mir
   const { aborted } = network(t, url => url === urls[0] ? forever : response())
   assert.equal(await reachableUrl(station('radio', urls)), urls[1])
   assert.ok(aborted.includes(urls[0]), 'cancel the losing mirror')
+})
+
+test('CNR channel API is resolved to its current media URL and cached', async t => {
+  const raw = 'https://apppc.cnr.cn/national?cf=yyzs'
+  const resolved = 'https://ngcdn001.cnr.cn/live/yyzs/index.m3u8'
+  const { calls } = network(t, url => url === raw
+    ? new Response(JSON.stringify({ data: { m3u8: resolved } }), { headers: { 'content-type': 'application/json' } })
+    : response())
+  assert.equal(await resolveStationUrl(raw), resolved)
+  assert.equal(await resolveStationUrl(raw), resolved)
+  assert.equal(calls.filter(url => url === raw).length, 1)
+  assert.equal(await resolveStationUrl('https://ice1.somafm.com/groovesalad-128-mp3'), 'https://ice1.somafm.com/groovesalad-128-mp3')
 })
 
 test('a ready station is yielded before a slower station in the same batch', { timeout: 1000 }, async t => {
